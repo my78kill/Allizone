@@ -1,17 +1,37 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_USER, API_SECRET
-import time
 import threading
+import time
 import requests
+from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_USER, API_SECRET
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# Load abuse words
-with open("abuse.txt", "r", encoding="utf-8") as f:
-    ABUSE_WORDS = [line.strip().lower() for line in f.readlines()]
+# ------------------ LOAD / SAVE PACKS ------------------
 
-# Auto delete function
+def load_packs():
+    try:
+        with open("nsfw_packs.txt", "r", encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines()]
+    except:
+        return []
+
+def save_pack(pack_name):
+    packs = load_packs()
+    if pack_name not in packs:
+        with open("nsfw_packs.txt", "a", encoding="utf-8") as f:
+            f.write(pack_name + "\n")
+
+def remove_pack_file(pack_name):
+    packs = load_packs()
+    packs = [p for p in packs if p != pack_name]
+
+    with open("nsfw_packs.txt", "w", encoding="utf-8") as f:
+        for p in packs:
+            f.write(p + "\n")
+
+# ------------------ AUTO DELETE ------------------
+
 def auto_delete(chat_id, message_id, delay):
     time.sleep(delay)
     try:
@@ -19,7 +39,17 @@ def auto_delete(chat_id, message_id, delay):
     except:
         pass
 
-# ------------------ START COMMAND ------------------
+# ------------------ ADMIN CHECK ------------------
+
+def is_admin(chat_id, user_id):
+    try:
+        status = bot.get_chat_member(chat_id, user_id).status
+        return status in ["administrator", "creator"]
+    except:
+        return False
+
+# ------------------ START ------------------
+
 @bot.message_handler(commands=['start'])
 def start(msg):
     if msg.chat.type == "private":
@@ -29,62 +59,57 @@ def start(msg):
             InlineKeyboardButton("📖 Help", callback_data="help")
         )
 
-        text = """
-👋 Welcome!
+        text = """👋 Welcome!
 
-I am a smart moderation bot 🤖
+I am a moderation bot 🤖
 
 ✨ Features:
-• NSFW image/sticker detection 🚫
-• Abuse word filter ⚠️
+• NSFW detection 🚫
+• Abuse filter ⚠️
+• Sticker pack blocker 📦
 • Edited message tracking ⏳
-• Auto clean bot messages 🧹
-
-Add me to your group and make chat clean 🚀
 """
-        m = bot.send_message(msg.chat.id, text, reply_markup=markup)
 
+        m = bot.send_message(msg.chat.id, text, reply_markup=markup)
         threading.Thread(target=auto_delete, args=(msg.chat.id, m.message_id, DELETE_TIME)).start()
 
-# ------------------ HELP BUTTON ------------------
+# ------------------ HELP ------------------
+
 @bot.callback_query_handler(func=lambda call: call.data == "help")
 def help_cb(call):
-    text = """
-📖 Commands:
-/start - Start bot
-/help - Show help
+    text = """📖 Commands:
 
-⚙️ Auto Features:
-• NSFW detection (API)
-• Abuse filter
-• Edited message delete after 30 min
+/addpack - Ban sticker pack (reply to sticker)
+/removepack - Unban pack
 """
+
     bot.answer_callback_query(call.id)
     m = bot.send_message(call.message.chat.id, text)
-
     threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
 # ------------------ ABUSE FILTER ------------------
-@bot.message_handler(func=lambda message: message.text is not None)
-def filter_abuse(message):
+
+with open("abuse.txt", "r", encoding="utf-8") as f:
+    ABUSE_WORDS = [line.strip().lower() for line in f.readlines()]
+
+@bot.message_handler(func=lambda m: m.text is not None)
+def abuse_filter(message):
     text = message.text.lower()
 
     for word in ABUSE_WORDS:
         if word in text:
-            try:
-                bot.delete_message(message.chat.id, message.message_id)
+            bot.delete_message(message.chat.id, message.message_id)
 
-                warn = bot.send_message(
-                    message.chat.id,
-                    f"⚠️ <a href='tg://user?id={message.from_user.id}'>{message.from_user.first_name}</a>, abuse is not allowed!"
-                )
+            warn = bot.send_message(
+                message.chat.id,
+                f"⚠️ <a href='tg://user?id={message.from_user.id}'>{message.from_user.first_name}</a>, abuse not allowed!"
+            )
 
-                threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
-            except:
-                pass
+            threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
             return
 
-# ------------------ NSFW CHECK FUNCTION ------------------
+# ------------------ NSFW API ------------------
+
 def check_nsfw(file_url):
     url = "https://api.sightengine.com/1.0/check.json"
     params = {
@@ -94,74 +119,108 @@ def check_nsfw(file_url):
         'url': file_url
     }
     try:
-        res = requests.get(url, params=params)
-        data = res.json()
+        r = requests.get(url, params=params)
+        data = r.json()
 
         nudity = data.get("nudity", {})
-        if (
-            nudity.get("sexual_activity", 0) > 0.5 or
-            nudity.get("sexual_display", 0) > 0.5 or
-            nudity.get("erotica", 0) > 0.5
-        ):
+        if nudity.get("sexual_activity", 0) > 0.5 or nudity.get("sexual_display", 0) > 0.5:
             return True
     except:
         pass
 
     return False
 
-# ------------------ NSFW HANDLER ------------------
-@bot.message_handler(content_types=['photo', 'sticker'])
-def nsfw_handler(message):
+# ------------------ STICKER HANDLER ------------------
+
+@bot.message_handler(content_types=['sticker'])
+def sticker_handler(message):
     try:
-        file_id = None
+        sticker = message.sticker
+        user = message.from_user
+        pack_name = sticker.set_name
 
-        if message.content_type == 'sticker':
-            file_id = message.sticker.file_id
-        elif message.content_type == 'photo':
-            file_id = message.photo[-1].file_id
+        BLOCKED_PACKS = load_packs()
 
-        file_info = bot.get_file(file_id)
-        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
-
-        if check_nsfw(file_url):
-            user = message.from_user
-
-            # Delete NSFW content
+        # 🚫 Blocked pack
+        if pack_name in BLOCKED_PACKS:
             bot.delete_message(message.chat.id, message.message_id)
 
-            # Alert
             warn = bot.send_message(
                 message.chat.id,
-                f"🚫 <a href='tg://user?id={user.id}'>{user.first_name}</a>, NSFW content is not allowed!"
+                f"🚫 <a href='tg://user?id={user.id}'>{user.first_name}</a>, this sticker pack is banned!"
             )
 
             threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
+            return
+
+        # 🧠 Static sticker NSFW check
+        if not sticker.is_animated and not sticker.is_video:
+            file_info = bot.get_file(sticker.file_id)
+            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+
+            if check_nsfw(file_url):
+                bot.delete_message(message.chat.id, message.message_id)
 
     except Exception as e:
         print(e)
 
+# ------------------ PHOTO NSFW ------------------
+
+@bot.message_handler(content_types=['photo'])
+def photo_handler(message):
+    try:
+        file_id = message.photo[-1].file_id
+        file_info = bot.get_file(file_id)
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+
+        if check_nsfw(file_url):
+            bot.delete_message(message.chat.id, message.message_id)
+    except:
+        pass
+
+# ------------------ ADD PACK ------------------
+
+@bot.message_handler(commands=['addpack'])
+def add_pack(message):
+    if not is_admin(message.chat.id, message.from_user.id):
+        return
+
+    if message.reply_to_message and message.reply_to_message.sticker:
+        pack = message.reply_to_message.sticker.set_name
+        save_pack(pack)
+        bot.reply_to(message, f"✅ Added pack: {pack}")
+    else:
+        bot.reply_to(message, "❌ Reply to a sticker")
+
+# ------------------ REMOVE PACK ------------------
+
+@bot.message_handler(commands=['removepack'])
+def remove_pack(message):
+    if not is_admin(message.chat.id, message.from_user.id):
+        return
+
+    if message.reply_to_message and message.reply_to_message.sticker:
+        pack = message.reply_to_message.sticker.set_name
+        remove_pack_file(pack)
+        bot.reply_to(message, f"✅ Removed pack: {pack}")
+    else:
+        bot.reply_to(message, "❌ Reply to a sticker")
+
 # ------------------ EDITED MESSAGE ------------------
-@bot.edited_message_handler(func=lambda message: True)
+
+@bot.edited_message_handler(func=lambda m: True)
 def edited_msg(message):
     user = message.from_user
 
     warn = bot.send_message(
         message.chat.id,
-        f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 minutes."
+        f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 min."
     )
 
-    # delete edited msg after 30 min
-    threading.Thread(
-        target=auto_delete,
-        args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)
-    ).start()
+    threading.Thread(target=auto_delete, args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)).start()
+    threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
 
-    # delete warning after 5 min
-    threading.Thread(
-        target=auto_delete,
-        args=(warn.chat.id, warn.message_id, DELETE_TIME)
-    ).start()
+# ------------------ RUN ------------------
 
-# ------------------ RUN BOT ------------------
 def run_bot():
     bot.infinity_polling()
