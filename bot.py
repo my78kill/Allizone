@@ -81,27 +81,6 @@ def help_cb(call):
     m = bot.send_message(call.message.chat.id, text)
     threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
-# ------------------ ABUSE FILTER ------------------
-
-with open("abuse.txt", "r", encoding="utf-8") as f:
-    ABUSE_WORDS = [line.strip().lower() for line in f.readlines()]
-
-@bot.message_handler(func=lambda m: m.text is not None and not m.text.startswith('/'))
-def abuse_filter(message):
-    text = message.text.lower()
-
-    for word in ABUSE_WORDS:
-        if word in text:
-            bot.delete_message(message.chat.id, message.message_id)
-
-            warn = bot.send_message(
-                message.chat.id,
-                f"⚠️ <a href='tg://user?id={message.from_user.id}'>{message.from_user.first_name}</a>, abuse not allowed!"
-            )
-
-            threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
-            return
-
 # ------------------ NSFW API ------------------
 
 def check_nsfw(file_url):
@@ -189,7 +168,6 @@ def add_pack(message):
                 return
 
             add_pack_db(pack)
-
             bot.reply_to(message, f"✅ Added pack: {pack}")
 
         else:
@@ -215,7 +193,6 @@ def remove_pack(message):
                 return
 
             remove_pack_db(pack)
-
             bot.reply_to(message, f"✅ Removed pack: {pack}")
 
         else:
