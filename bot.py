@@ -60,7 +60,6 @@ I am a moderation bot 🤖
 
 ✨ Features:
 • NSFW detection 🚫
-• Abuse filter ⚠️
 • Sticker pack blocker 📦
 • Edited message tracking ⏳
 """
