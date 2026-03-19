@@ -4,31 +4,26 @@ import threading
 import time
 import requests
 from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_USER, API_SECRET
+from db import cursor, conn
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ------------------ LOAD / SAVE PACKS ------------------
+# ------------------ DB FUNCTIONS ------------------
 
 def load_packs():
+    cursor.execute("SELECT name FROM packs")
+    return [row[0] for row in cursor.fetchall()]
+
+def add_pack_db(pack_name):
     try:
-        with open("nsfw_packs.txt", "r", encoding="utf-8") as f:
-            return [line.strip() for line in f.readlines()]
+        cursor.execute("INSERT INTO packs (name) VALUES (?)", (pack_name,))
+        conn.commit()
     except:
-        return []
+        pass
 
-def save_pack(pack_name):
-    packs = load_packs()
-    if pack_name not in packs:
-        with open("nsfw_packs.txt", "a", encoding="utf-8") as f:
-            f.write(pack_name + "\n")
-
-def remove_pack_file(pack_name):
-    packs = load_packs()
-    packs = [p for p in packs if p != pack_name]
-
-    with open("nsfw_packs.txt", "w", encoding="utf-8") as f:
-        for p in packs:
-            f.write(p + "\n")
+def remove_pack_db(pack_name):
+    cursor.execute("DELETE FROM packs WHERE name=?", (pack_name,))
+    conn.commit()
 
 # ------------------ AUTO DELETE ------------------
 
@@ -182,29 +177,53 @@ def photo_handler(message):
 
 @bot.message_handler(commands=['addpack'])
 def add_pack(message):
-    if not is_admin(message.chat.id, message.from_user.id):
-        return
+    try:
+        if not is_admin(message.chat.id, message.from_user.id):
+            bot.reply_to(message, "❌ You are not admin")
+            return
 
-    if message.reply_to_message and message.reply_to_message.sticker:
-        pack = message.reply_to_message.sticker.set_name
-        save_pack(pack)
-        bot.reply_to(message, f"✅ Added pack: {pack}")
-    else:
-        bot.reply_to(message, "❌ Reply to a sticker")
+        if message.reply_to_message and message.reply_to_message.sticker:
+            pack = message.reply_to_message.sticker.set_name
+
+            if not pack:
+                bot.reply_to(message, "❌ Cannot detect pack name")
+                return
+
+            add_pack_db(pack)
+
+            bot.reply_to(message, f"✅ Added pack: {pack}")
+
+        else:
+            bot.reply_to(message, "❌ Reply to a sticker")
+
+    except Exception as e:
+        print(e)
 
 # ------------------ REMOVE PACK ------------------
 
 @bot.message_handler(commands=['removepack'])
 def remove_pack(message):
-    if not is_admin(message.chat.id, message.from_user.id):
-        return
+    try:
+        if not is_admin(message.chat.id, message.from_user.id):
+            bot.reply_to(message, "❌ You are not admin")
+            return
 
-    if message.reply_to_message and message.reply_to_message.sticker:
-        pack = message.reply_to_message.sticker.set_name
-        remove_pack_file(pack)
-        bot.reply_to(message, f"✅ Removed pack: {pack}")
-    else:
-        bot.reply_to(message, "❌ Reply to a sticker")
+        if message.reply_to_message and message.reply_to_message.sticker:
+            pack = message.reply_to_message.sticker.set_name
+
+            if not pack:
+                bot.reply_to(message, "❌ Cannot detect pack name")
+                return
+
+            remove_pack_db(pack)
+
+            bot.reply_to(message, f"✅ Removed pack: {pack}")
+
+        else:
+            bot.reply_to(message, "❌ Reply to a sticker")
+
+    except Exception as e:
+        print(e)
 
 # ------------------ EDITED MESSAGE ------------------
 
