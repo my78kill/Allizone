@@ -87,7 +87,7 @@ def help_cb(call):
 with open("abuse.txt", "r", encoding="utf-8") as f:
     ABUSE_WORDS = [line.strip().lower() for line in f.readlines()]
 
-@bot.message_handler(func=lambda m: m.text is not None)
+@bot.message_handler(func=lambda m: m.text is not None and not m.text.startswith('/'))
 def abuse_filter(message):
     text = message.text.lower()
 
@@ -242,4 +242,4 @@ def edited_msg(message):
 # ------------------ RUN ------------------
 
 def run_bot():
-    bot.infinity_polling()
+    bot.infinity_polling(skip_pending=True)
