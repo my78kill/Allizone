@@ -64,7 +64,6 @@ def start(msg):
 I am a moderation bot 🤖
 
 ✨ Features:
-• NSFW detection 🚫
 • Sticker pack blocker 📦
 • Edited message auto-delete ⏳
 • Quiz Game 🎮 (#start)
@@ -93,9 +92,6 @@ def help_cb(call):
     threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
 # ------------------ NSFW CHECK ------------------
-
-API_URL = os.getenv("API_URL")
-API_KEY = os.getenv("API_KEY")
 
 def check_nsfw_file(file_path):
     try:
