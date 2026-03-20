@@ -6,8 +6,12 @@ import requests
 import os
 from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME
 from db import cursor, conn
+from game import register_game_handlers   # 👈 GAME IMPORT
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+# 🔥 REGISTER GAME
+register_game_handlers(bot)
 
 # ------------------ DB FUNCTIONS ------------------
 
@@ -63,6 +67,7 @@ I am a moderation bot 🤖
 • NSFW detection 🚫
 • Sticker pack blocker 📦
 • Edited message auto-delete ⏳
+• Quiz Game 🎮 (#start)
 """
 
         m = bot.send_message(msg.chat.id, text, reply_markup=markup)
@@ -74,8 +79,13 @@ I am a moderation bot 🤖
 def help_cb(call):
     text = """📖 Commands:
 
-/addpack - Ban sticker pack (reply to sticker)
+/addpack - Ban sticker pack
 /removepack - Unban pack
+
+🎮 Game:
+/#start - Start quiz
+/#rank - Leaderboard
+/#end - Stop game
 """
 
     bot.answer_callback_query(call.id)
@@ -83,6 +93,9 @@ def help_cb(call):
     threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
 # ------------------ NSFW CHECK ------------------
+
+API_URL = os.getenv("API_URL")
+API_KEY = os.getenv("API_KEY")
 
 def check_nsfw_file(file_path):
     try:
@@ -109,7 +122,6 @@ def sticker_handler(message):
 
         BLOCKED_PACKS = load_packs()
 
-        # 🚫 Blocked pack
         if pack_name in BLOCKED_PACKS:
             bot.delete_message(message.chat.id, message.message_id)
 
@@ -121,7 +133,6 @@ def sticker_handler(message):
             threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
             return
 
-        # 📥 Download sticker
         file_info = bot.get_file(sticker.file_id)
         file_path = file_info.file_path
         downloaded = bot.download_file(file_path)
@@ -132,7 +143,6 @@ def sticker_handler(message):
         with open(path, "wb") as f:
             f.write(downloaded)
 
-        # 🔥 NSFW CHECK
         if check_nsfw_file(path):
             bot.delete_message(message.chat.id, message.message_id)
 
@@ -164,12 +174,11 @@ def photo_handler(message):
     except Exception as e:
         print("Photo Error:", e)
 
-# ------------------ EDIT HANDLER (FIXED) ------------------
+# ------------------ EDIT HANDLER ------------------
 
 @bot.edited_message_handler(func=lambda m: True)
 def edited_msg(message):
     try:
-        # ❌ Ignore reactions / empty edits
         if not message.text and not message.caption:
             return
 
@@ -180,17 +189,8 @@ def edited_msg(message):
             f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 min."
         )
 
-        # ⏳ delete edited message after 30 min
-        threading.Thread(
-            target=auto_delete,
-            args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)
-        ).start()
-
-        # ⏳ delete warning message
-        threading.Thread(
-            target=auto_delete,
-            args=(warn.chat.id, warn.message_id, DELETE_TIME)
-        ).start()
+        threading.Thread(target=auto_delete, args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)).start()
+        threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
 
     except Exception as e:
         print("Edit Error:", e)
@@ -248,5 +248,5 @@ def remove_pack(message):
 # ------------------ RUN ------------------
 
 def run_bot():
-    print("Bot running with NSFW API 🚀")
+    print("Bot + Game running 🚀")
     bot.infinity_polling(skip_pending=True)
