@@ -1,5 +1,5 @@
 # 🔑 BOT TOKEN
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "8678708886:AAH6rKZf5JUxRhlva3vi5YfwTqSzQG7YKSk"
 
 # ⏱️ Auto delete timings (seconds)
 DELETE_TIME = 10        # warning message delete
