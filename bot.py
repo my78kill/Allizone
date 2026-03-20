@@ -6,9 +6,14 @@ import requests
 import os
 from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_URL, API_KEY
 from db import cursor, conn
-from game import register_game_handlers   # 👈 GAME IMPORT
+from game import register_game_handlers
+from shark_game import register_shark_game   # 👈 ye bhi add kar
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+# ✅ GAME REGISTER
+register_game_handlers(bot)
+register_shark_game(bot)
 
 # 🔥 REGISTER GAME
 register_game_handlers(bot)
