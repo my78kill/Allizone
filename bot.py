@@ -3,10 +3,14 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import threading
 import time
 import requests
-from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_USER, API_SECRET
+import os
+from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME
 from db import cursor, conn
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+API_URL = "https://your-app.onrender.com/check"
+API_KEY = "mysecret123"
 
 # ------------------ DB FUNCTIONS ------------------
 
@@ -61,7 +65,7 @@ I am a moderation bot 🤖
 ✨ Features:
 • NSFW detection 🚫
 • Sticker pack blocker 📦
-• Edited message tracking ⏳
+• Edited message auto-delete ⏳
 """
 
         m = bot.send_message(msg.chat.id, text, reply_markup=markup)
@@ -81,27 +85,21 @@ def help_cb(call):
     m = bot.send_message(call.message.chat.id, text)
     threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
-# ------------------ NSFW API ------------------
+# ------------------ NSFW CHECK ------------------
 
-def check_nsfw(file_url):
-    url = "https://api.sightengine.com/1.0/check.json"
-    params = {
-        'models': 'nudity-2.1',
-        'api_user': API_USER,
-        'api_secret': API_SECRET,
-        'url': file_url
-    }
+def check_nsfw_file(file_path):
     try:
-        r = requests.get(url, params=params)
-        data = r.json()
-
-        nudity = data.get("nudity", {})
-        if nudity.get("sexual_activity", 0) > 0.5 or nudity.get("sexual_display", 0) > 0.5:
-            return True
-    except:
-        pass
-
-    return False
+        with open(file_path, "rb") as f:
+            res = requests.post(
+                API_URL,
+                headers={"x-api-key": API_KEY},
+                files={"file": f},
+                timeout=20
+            )
+        return res.json().get("nsfw", False)
+    except Exception as e:
+        print("API Error:", e)
+        return False
 
 # ------------------ STICKER HANDLER ------------------
 
@@ -126,30 +124,79 @@ def sticker_handler(message):
             threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
             return
 
-        # 🧠 Static sticker NSFW check
-        if not sticker.is_animated and not sticker.is_video:
-            file_info = bot.get_file(sticker.file_id)
-            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        # 📥 Download sticker
+        file_info = bot.get_file(sticker.file_id)
+        file_path = file_info.file_path
+        downloaded = bot.download_file(file_path)
 
-            if check_nsfw(file_url):
-                bot.delete_message(message.chat.id, message.message_id)
+        ext = file_path.split('.')[-1]
+        path = f"sticker.{ext}"
+
+        with open(path, "wb") as f:
+            f.write(downloaded)
+
+        # 🔥 NSFW CHECK
+        if check_nsfw_file(path):
+            bot.delete_message(message.chat.id, message.message_id)
+
+        os.remove(path)
 
     except Exception as e:
-        print(e)
+        print("Sticker Error:", e)
 
-# ------------------ PHOTO NSFW ------------------
+# ------------------ PHOTO HANDLER ------------------
 
 @bot.message_handler(content_types=['photo'])
 def photo_handler(message):
     try:
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
-        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        file_path = file_info.file_path
 
-        if check_nsfw(file_url):
+        downloaded = bot.download_file(file_path)
+
+        path = "photo.jpg"
+        with open(path, "wb") as f:
+            f.write(downloaded)
+
+        if check_nsfw_file(path):
             bot.delete_message(message.chat.id, message.message_id)
-    except:
-        pass
+
+        os.remove(path)
+
+    except Exception as e:
+        print("Photo Error:", e)
+
+# ------------------ EDIT HANDLER (FIXED) ------------------
+
+@bot.edited_message_handler(func=lambda m: True)
+def edited_msg(message):
+    try:
+        # ❌ Ignore reactions / empty edits
+        if not message.text and not message.caption:
+            return
+
+        user = message.from_user
+
+        warn = bot.send_message(
+            message.chat.id,
+            f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 min."
+        )
+
+        # ⏳ delete edited message after 30 min
+        threading.Thread(
+            target=auto_delete,
+            args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)
+        ).start()
+
+        # ⏳ delete warning message
+        threading.Thread(
+            target=auto_delete,
+            args=(warn.chat.id, warn.message_id, DELETE_TIME)
+        ).start()
+
+    except Exception as e:
+        print("Edit Error:", e)
 
 # ------------------ ADD PACK ------------------
 
@@ -201,21 +248,8 @@ def remove_pack(message):
     except Exception as e:
         print(e)
 
-# ------------------ EDITED MESSAGE ------------------
-
-@bot.edited_message_handler(func=lambda m: True)
-def edited_msg(message):
-    user = message.from_user
-
-    warn = bot.send_message(
-        message.chat.id,
-        f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 min."
-    )
-
-    threading.Thread(target=auto_delete, args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)).start()
-    threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
-
 # ------------------ RUN ------------------
 
 def run_bot():
+    print("Bot running with NSFW API 🚀")
     bot.infinity_polling(skip_pending=True)
