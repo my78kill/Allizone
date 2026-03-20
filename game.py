@@ -20,6 +20,10 @@ def load_questions():
                     q.append((question.strip(), answer.strip().lower()))
     except:
         pass
+
+    if not q:
+        q = [("Capital of France?", "paris")]  # fallback
+
     return q
 
 
@@ -49,7 +53,6 @@ def register_game_handlers(bot):
         }
 
         bot.send_message(chat_id, "🎮 Game Started!")
-
         next_round(bot, chat_id)
 
     # NEXT ROUND
@@ -83,7 +86,11 @@ def register_game_handlers(bot):
 
         data["msg_id"] = msg.message_id
 
-        threading.Thread(target=round_timer, args=(bot, chat_id), daemon=True).start()
+        threading.Thread(
+            target=round_timer,
+            args=(bot, chat_id),
+            daemon=True
+        ).start()
 
     # TIMER
     def round_timer(bot, chat_id):
@@ -106,9 +113,9 @@ def register_game_handlers(bot):
         data["answer"] = None
         next_round(bot, chat_id)
 
-    # ANSWER
-      @bot.message_handler(func=lambda m: m.text and m.text.startswith("#"))
-       def check_answer(message):
+    # ANSWER (🔥 FIXED)
+    @bot.message_handler(func=lambda m: m.text and not m.text.startswith("#") and not m.text.startswith("/"))
+    def check_answer(message):
 
         chat_id = message.chat.id
 
@@ -120,7 +127,9 @@ def register_game_handlers(bot):
         if data["answer"] is None:
             return
 
-        if message.text.lower().strip() == data["answer"]:
+        user_answer = message.text.lower().strip()
+
+        if user_answer == data["answer"]:
 
             user_id = message.from_user.id
             name = message.from_user.first_name
@@ -130,7 +139,7 @@ def register_game_handlers(bot):
 
             scores[chat_id][user_id]["points"] += 10
 
-            bot.send_message(chat_id, f"✅ {name} +10 points")
+            bot.send_message(chat_id, f"✅ {name} answered correctly!\n+10 points 🎉")
 
             try:
                 bot.delete_message(chat_id, data["msg_id"])
