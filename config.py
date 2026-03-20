@@ -1,8 +1,10 @@
-import os
+# 🔑 BOT TOKEN
+BOT_TOKEN = "YOUR_BOT_TOKEN"
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_USER = os.getenv("API_USER")
-API_SECRET = os.getenv("API_SECRET")
+# ⏱️ Auto delete timings (seconds)
+DELETE_TIME = 10        # warning message delete
+EDIT_DELETE_TIME = 1800  # 30 min = 1800 sec
 
-DELETE_TIME = 100
-EDIT_DELETE_TIME = 1800
+# 🌐 NSFW API
+API_URL = "https://your-app.onrender.com/check"
+API_KEY = "mysecret123"
