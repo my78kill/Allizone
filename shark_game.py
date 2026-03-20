@@ -58,9 +58,9 @@ def register_shark_game(bot):
             "msg": msg.message_id
         }
 
-    # BUTTONS
-    @bot.callback_query_handler(func=lambda call: call.data in ["see", "change", "join", "drop"])
-    def buttons(call):
+    # GUESS (FINAL FIX)
+@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and not m.text.startswith("#"))
+def guess(message):
 
         chat = call.message.chat.id
         user = call.from_user
