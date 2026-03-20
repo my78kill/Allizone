@@ -4,7 +4,7 @@ import threading
 import time
 import requests
 import os
-from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME
+from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_URL, API_KEY
 from db import cursor, conn
 from game import register_game_handlers   # 👈 GAME IMPORT
 
