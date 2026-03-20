@@ -107,8 +107,8 @@ def register_game_handlers(bot):
         next_round(bot, chat_id)
 
     # ANSWER
-    @bot.message_handler(func=lambda m: m.text and not m.text.startswith("#"))
-    def check_answer(message):
+      @bot.message_handler(func=lambda m: m.text and m.text.startswith("#"))
+       def check_answer(message):
 
         chat_id = message.chat.id
 
