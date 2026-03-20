@@ -58,15 +58,13 @@ def register_shark_game(bot):
             "msg": msg.message_id
         }
 
-    # GUESS (FINAL FIX)
-@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and not m.text.startswith("#"))
-def guess(message):
-
+    # BUTTON HANDLER ✅
+    @bot.callback_query_handler(func=lambda call: call.data in ["see", "change", "join", "drop"])
+    def buttons(call):
         chat = call.message.chat.id
         user = call.from_user
         data = call.data
 
-        # JOIN
         if data == "join":
             if user.id not in leader_queue[chat]:
                 leader_queue[chat].append(user.id)
@@ -117,8 +115,8 @@ def guess(message):
                 bot.send_message(chat, "No leader left")
                 del games[chat]
 
-    # GUESS (🔥 FIXED)
-    @bot.message_handler(func=lambda m: m.text and not m.text.startswith("/"))
+    # GUESS ✅ FINAL FIX
+    @bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and not m.text.startswith("#"))
     def guess(message):
 
         chat = message.chat.id
@@ -130,11 +128,9 @@ def guess(message):
         user = message.from_user
         text = message.text.lower().strip()
 
-        # Leader cheating
         if user.id == game["leader"]:
             return
 
-        # ✅ CORRECT ANSWER
         if text == game["word"]:
 
             ranking[chat][user.first_name] += 1
@@ -147,13 +143,11 @@ def guess(message):
                 parse_mode="HTML"
             )
 
-            # delete old msg
             try:
                 bot.delete_message(chat, game["msg"])
             except:
                 pass
 
-            # NEW LEADER SET
             new_word = random.choice(words)
 
             msg = bot.send_message(
