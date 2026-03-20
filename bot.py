@@ -9,9 +9,6 @@ from db import cursor, conn
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-API_URL = "https://your-app.onrender.com/check"
-API_KEY = "mysecret123"
-
 # ------------------ DB FUNCTIONS ------------------
 
 def load_packs():
