@@ -7,4 +7,4 @@ EDIT_DELETE_TIME = 1800  # 30 min = 1800 sec
 
 # 🌐 NSFW API
 API_URL = "https://your-app.onrender.com/check"
-API_KEY = "mysecret123"
+API_KEY = "sk_92KjsH@8sKx_91!dkL"
