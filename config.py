@@ -1,4 +1,9 @@
-# 🔑 BOT TOKEN
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# BOT TOKEN
 BOT_TOKEN = "8678708886:AAH6rKZf5JUxRhlva3vi5YfwTqSzQG7YKSk"
 
 # ⏱️ Auto delete timings (seconds)
