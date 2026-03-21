@@ -18,7 +18,8 @@ def load_words():
 words = load_words()
 
 
-# ---------------- KEYBOARD ----------------
+# ---------------- KEYBOARDS ----------------
+
 def game_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
@@ -41,6 +42,7 @@ def join_keyboard():
 
 
 # ---------------- MAIN ----------------
+
 def register_shark_game(bot):
 
     # START GAME
@@ -69,11 +71,12 @@ def register_shark_game(bot):
             "leader": user.id,
             "leader_name": user.first_name,
             "word": word,
-            "msg": msg.message_id
+            "msg": msg.message_id,
+            "drop_pending": False
         }
 
     # ---------------- BUTTONS ----------------
-    @bot.callback_query_handler(func=lambda call: call.data in ["see", "change", "join", "drop"])
+    @bot.callback_query_handler(func=lambda call: call.data in ["see", "change", "join", "drop", "take_lead"])
     def buttons(call):
 
         chat = call.message.chat.id
@@ -93,14 +96,36 @@ def register_shark_game(bot):
                 leader_queue[chat].append(user.id)
 
             bot.answer_callback_query(call.id, "Added to leader queue!")
-
-            bot.send_message(
-                chat,
-                f"🎮 {user.first_name} added to leader queue"
-            )
+            bot.send_message(chat, f"🎮 {user.first_name} joined leader queue")
             return
 
-        # only leader controls
+        # ---------------- TAKE LEAD AFTER DROP ----------------
+        if data == "take_lead":
+
+            if not game.get("drop_pending"):
+                bot.answer_callback_query(call.id, "No lead available!", show_alert=True)
+                return
+
+            game["leader"] = user.id
+            game["leader_name"] = user.first_name
+            game["word"] = random.choice(words)
+            game["drop_pending"] = False
+
+            mention = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
+
+            msg = bot.send_message(
+                chat,
+                f"🦈 Shark game\n{mention} is explaining the word!",
+                parse_mode="HTML",
+                reply_markup=game_keyboard()
+            )
+
+            game["msg"] = msg.message_id
+
+            bot.answer_callback_query(call.id)
+            return
+
+        # only leader controls below
         if user.id != game["leader"]:
             bot.answer_callback_query(call.id, "Only leader can do this!", show_alert=True)
             return
@@ -114,55 +139,29 @@ def register_shark_game(bot):
             game["word"] = random.choice(words)
             bot.answer_callback_query(call.id, f"New Word: {game['word']}", show_alert=True)
 
-        # ---------------- DROP LEAD (NEW SYSTEM) ----------------
+        # ---------------- DROP LEAD (NEW FLOW) ----------------
         elif data == "drop":
 
-            old_leader = game["leader_name"]
+            old_name = game["leader_name"]
+
+            game["leader"] = None
+            game["drop_pending"] = True
 
             try:
                 bot.delete_message(chat, game["msg"])
             except:
                 pass
 
-            # REMOVE CURRENT LEADER
-            game["leader"] = None
+            markup = InlineKeyboardMarkup()
+            markup.add(
+                InlineKeyboardButton("🎮 I want to be a leader", callback_data="take_lead")
+            )
 
-            # NEXT LEADER FROM QUEUE
-            if leader_queue[chat]:
-
-                new = leader_queue[chat].pop(0)
-                member = bot.get_chat_member(chat, new)
-
-                game["leader"] = new
-                game["leader_name"] = member.user.first_name
-                game["word"] = random.choice(words)
-
-                mention = f"<a href='tg://user?id={new}'>{member.user.first_name}</a>"
-
-                msg = bot.send_message(
-                    chat,
-                    f"🦈 {old_leader} refused to lead ❌\n\n🎤 {mention} is now the leader!",
-                    parse_mode="HTML",
-                    reply_markup=game_keyboard()
-                )
-
-                game["msg"] = msg.message_id
-
-            else:
-
-                bot.send_message(
-                    chat,
-                    f"🦈 {old_leader} refused to lead ❌\n\n⚠️ No leader in queue!"
-                )
-
-                # SHOW JOIN BUTTON
-                bot.send_message(
-                    chat,
-                    "👉 No leader available. Join queue to become leader!",
-                    reply_markup=join_keyboard()
-                )
-
-                del games[chat]
+            bot.send_message(
+                chat,
+                f"❌ {old_name} refused to lead\n\n👉 Someone can take leadership!",
+                reply_markup=markup
+            )
 
         bot.answer_callback_query(call.id)
 
@@ -199,23 +198,21 @@ def register_shark_game(bot):
             except:
                 pass
 
-            new_word = random.choice(words)
+            game["leader"] = user.id
+            game["leader_name"] = user.first_name
+            game["word"] = random.choice(words)
+            game["drop_pending"] = False
 
             msg = bot.send_message(
                 chat,
-                f"🦈 New Leader Game\n\n🎤 {mention} is now leader!",
+                f"🦈 Shark Game\n\n🎤 {mention} is now leader!",
                 parse_mode="HTML",
                 reply_markup=game_keyboard()
             )
 
-            games[chat] = {
-                "leader": user.id,
-                "leader_name": user.first_name,
-                "word": new_word,
-                "msg": msg.message_id
-            }
+            game["msg"] = msg.message_id
 
-    # ---------------- RANK ----------------
+    # ---------------- RANKING ----------------
     @bot.message_handler(commands=['ranking'])
     def rank(message):
 
@@ -227,7 +224,7 @@ def register_shark_game(bot):
 
         top = sorted(ranking[chat].items(), key=lambda x: x[1], reverse=True)
 
-        text = "🏆 Ranking\n\n"
+        text = "🏆 Shark Game Ranking\n\n"
 
         for i, (name, score) in enumerate(top[:10], 1):
             text += f"{i}. {name} — {score}\n"
@@ -243,4 +240,4 @@ def register_shark_game(bot):
         if chat in games:
             del games[chat]
 
-        bot.send_message(chat, "🛑 Game stopped")
+        bot.send_message(chat, "🛑 Shark Game stopped")
