@@ -4,22 +4,28 @@ import threading
 import time
 import requests
 import os
+
 from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_URL, API_KEY
 from db import cursor, conn
 from game import register_game_handlers
 from shark_game import register_shark_game
 
+
+# ---------------- BOT INIT ----------------
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ✅ GAME REGISTER (ONLY ONCE)
+
+# ---------------- REGISTER GAMES ----------------
 register_game_handlers(bot)
 register_shark_game(bot)
 
-# ------------------ DB FUNCTIONS ------------------
+
+# ---------------- DB FUNCTIONS ----------------
 
 def load_packs():
     cursor.execute("SELECT name FROM packs")
     return [row[0] for row in cursor.fetchall()]
+
 
 def add_pack_db(pack_name):
     try:
@@ -28,11 +34,13 @@ def add_pack_db(pack_name):
     except:
         pass
 
+
 def remove_pack_db(pack_name):
     cursor.execute("DELETE FROM packs WHERE name=?", (pack_name,))
     conn.commit()
 
-# ------------------ AUTO DELETE ------------------
+
+# ---------------- AUTO DELETE ----------------
 
 def auto_delete(chat_id, message_id, delay):
     time.sleep(delay)
@@ -41,7 +49,8 @@ def auto_delete(chat_id, message_id, delay):
     except:
         pass
 
-# ------------------ ADMIN CHECK ------------------
+
+# ---------------- ADMIN CHECK ----------------
 
 def is_admin(chat_id, user_id):
     try:
@@ -50,50 +59,74 @@ def is_admin(chat_id, user_id):
     except:
         return False
 
-# ------------------ START ------------------
+
+# ---------------- START ----------------
 
 @bot.message_handler(commands=['start'])
 def start(msg):
     if msg.chat.type == "private":
+
         markup = InlineKeyboardMarkup()
         markup.add(
-            InlineKeyboardButton("➕ Add me to Group", url=f"https://t.me/{bot.get_me().username}?startgroup=true"),
+            InlineKeyboardButton(
+                "➕ Add me to Group",
+                url=f"https://t.me/{bot.get_me().username}?startgroup=true"
+            ),
             InlineKeyboardButton("📖 Help", callback_data="help")
         )
 
         text = """👋 Welcome!
 
-I am a moderation bot 🤖
+I am a moderation + game bot 🤖
 
 ✨ Features:
 • Sticker pack blocker 📦
-• Edited message auto-delete ⏳
-• Quiz Game 🎮 (#start)
+• Edited message detection ⏳
+• Quiz Game 🎮
+• 🦈 Shark Game (/game)
 """
 
-        m = bot.send_message(msg.chat.id, text, reply_markup=markup)
-        threading.Thread(target=auto_delete, args=(msg.chat.id, m.message_id, DELETE_TIME)).start()
+        bot.send_message(msg.chat.id, text, reply_markup=markup)
 
-# ------------------ HELP ------------------
+
+# ---------------- HELP (FIXED + SHARK GAME ADDED) ----------------
 
 @bot.callback_query_handler(func=lambda call: call.data == "help")
 def help_cb(call):
-    text = """📖 Commands:
 
+    text = """📖 Bot Commands:
+
+🛡 Moderation:
 /addpack - Ban sticker pack
-/removepack - Unban pack
+/removepack - Unban sticker pack
 
-🎮 Game:
-#start - Start quiz
-#rank - Leaderboard
-#end - Stop game
+🎮 Quiz Game:
+#start - Start quiz game
+#rank - Quiz leaderboard
+#end - Stop quiz game
+
+🦈 Shark Game:
+/game - Start shark game
+/ranking - Shark leaderboard 🏆
+/stop - Stop shark game
+
+🎯 Shark Game Rules:
+• Join queue to become leader
+• Correct answer = new leader
+• Drop lead = next queued player becomes leader
 """
 
     bot.answer_callback_query(call.id)
-    m = bot.send_message(call.message.chat.id, text)
-    threading.Thread(target=auto_delete, args=(m.chat.id, m.message_id, DELETE_TIME)).start()
 
-# ------------------ NSFW CHECK ------------------
+    m = bot.send_message(call.message.chat.id, text)
+
+    threading.Thread(
+        target=auto_delete,
+        args=(m.chat.id, m.message_id, DELETE_TIME)
+    ).start()
+
+
+# ---------------- NSFW CHECK ----------------
 
 def check_nsfw_file(file_path):
     try:
@@ -109,7 +142,8 @@ def check_nsfw_file(file_path):
         print("API Error:", e)
         return False
 
-# ------------------ STICKER HANDLER ------------------
+
+# ---------------- STICKER HANDLER ----------------
 
 @bot.message_handler(content_types=['sticker'])
 def sticker_handler(message):
@@ -126,7 +160,10 @@ def sticker_handler(message):
                 f"🚫 <a href='tg://user?id={user.id}'>{user.first_name}</a>, this sticker pack is banned!"
             )
 
-            threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
+            threading.Thread(
+                target=auto_delete,
+                args=(warn.chat.id, warn.message_id, DELETE_TIME)
+            ).start()
             return
 
         file_info = bot.get_file(sticker.file_id)
@@ -144,7 +181,8 @@ def sticker_handler(message):
     except Exception as e:
         print("Sticker Error:", e)
 
-# ------------------ PHOTO HANDLER ------------------
+
+# ---------------- PHOTO HANDLER ----------------
 
 @bot.message_handler(content_types=['photo'])
 def photo_handler(message):
@@ -166,7 +204,8 @@ def photo_handler(message):
     except Exception as e:
         print("Photo Error:", e)
 
-# ------------------ EDIT HANDLER ------------------
+
+# ---------------- EDITED MESSAGE HANDLER ----------------
 
 @bot.edited_message_handler(func=lambda m: True)
 def edited_msg(message):
@@ -178,57 +217,61 @@ def edited_msg(message):
 
         warn = bot.send_message(
             message.chat.id,
-            f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, your edited message will be deleted in 30 min."
+            f"⚠️ <a href='tg://user?id={user.id}'>{user.first_name}</a>, edited message will be deleted."
         )
 
-        threading.Thread(target=auto_delete, args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)).start()
-        threading.Thread(target=auto_delete, args=(warn.chat.id, warn.message_id, DELETE_TIME)).start()
+        # SAFE ONLY IN GROUPS
+        if message.chat.type != "private":
+            threading.Thread(
+                target=auto_delete,
+                args=(message.chat.id, message.message_id, EDIT_DELETE_TIME)
+            ).start()
+
+        threading.Thread(
+            target=auto_delete,
+            args=(warn.chat.id, warn.message_id, DELETE_TIME)
+        ).start()
 
     except Exception as e:
         print("Edit Error:", e)
 
-# ------------------ ADD PACK ------------------
+
+# ---------------- ADD PACK ----------------
 
 @bot.message_handler(commands=['addpack'])
 def add_pack(message):
     if not is_admin(message.chat.id, message.from_user.id):
-        bot.reply_to(message, "❌ You are not admin")
-        return
+        return bot.reply_to(message, "❌ You are not admin")
 
     if message.reply_to_message and message.reply_to_message.sticker:
         pack = message.reply_to_message.sticker.set_name
 
         if not pack:
-            bot.reply_to(message, "❌ Cannot detect pack name")
-            return
+            return bot.reply_to(message, "❌ Cannot detect pack name")
 
         add_pack_db(pack)
         bot.reply_to(message, f"✅ Added pack: {pack}")
-    else:
-        bot.reply_to(message, "❌ Reply to a sticker")
 
-# ------------------ REMOVE PACK ------------------
+
+# ---------------- REMOVE PACK ----------------
 
 @bot.message_handler(commands=['removepack'])
 def remove_pack(message):
     if not is_admin(message.chat.id, message.from_user.id):
-        bot.reply_to(message, "❌ You are not admin")
-        return
+        return bot.reply_to(message, "❌ You are not admin")
 
     if message.reply_to_message and message.reply_to_message.sticker:
         pack = message.reply_to_message.sticker.set_name
 
         if not pack:
-            bot.reply_to(message, "❌ Cannot detect pack name")
-            return
+            return bot.reply_to(message, "❌ Cannot detect pack name")
 
         remove_pack_db(pack)
         bot.reply_to(message, f"✅ Removed pack: {pack}")
-    else:
-        bot.reply_to(message, "❌ Reply to a sticker")
 
-# ------------------ RUN ------------------
+
+# ---------------- RUN BOT ----------------
 
 def run_bot():
-    print("Bot + Game running 🚀")
+    print("Bot + Quiz + Shark Game running 🚀")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
