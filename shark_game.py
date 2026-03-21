@@ -9,8 +9,8 @@ ranking = defaultdict(lambda: defaultdict(int))
 
 def load_words():
     try:
-        with open("words.txt") as f:
-            return [w.strip().lower() for w in f.readlines()]
+        with open("words.txt", "r", encoding="utf-8") as f:
+            return [w.strip().lower() for w in f.readlines() if w.strip()]
     except:
         return ["apple", "car", "dog"]
 
@@ -25,29 +25,32 @@ def game_keyboard():
         InlineKeyboardButton("🔄 Change word", callback_data="change")
     )
     markup.row(
-        InlineKeyboardButton("🎮 I want to be a leader", callback_data="join"),
-        InlineKeyboardButton("❌ Drop lead", callback_data="drop")
+        InlineKeyboardButton("🎮 Join Queue", callback_data="join"),
+        InlineKeyboardButton("❌ Drop Lead", callback_data="drop")
     )
     return markup
 
 
 def register_shark_game(bot):
 
-    # START
+    # ---------------- START GAME ----------------
     @bot.message_handler(commands=['game'])
     def start_game(message):
         chat = message.chat.id
 
         if chat in games:
-            bot.send_message(chat, "Game already running!")
+            bot.send_message(chat, "⚠️ Game already running!")
             return
 
         user = message.from_user
         word = random.choice(words)
 
+        mention = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
+
         msg = bot.send_message(
             chat,
-            f"🦈 Shark Game\n\n🎤 {user.first_name} is explaining the word!",
+            f"🦈 Shark Game Started!\n\n🎤 {mention} is the leader!",
+            parse_mode="HTML",
             reply_markup=game_keyboard()
         )
 
@@ -58,64 +61,91 @@ def register_shark_game(bot):
             "msg": msg.message_id
         }
 
-    # BUTTON HANDLER ✅
+    # ---------------- BUTTONS ----------------
     @bot.callback_query_handler(func=lambda call: call.data in ["see", "change", "join", "drop"])
     def buttons(call):
+
         chat = call.message.chat.id
         user = call.from_user
         data = call.data
 
-        if data == "join":
-            if user.id not in leader_queue[chat]:
-                leader_queue[chat].append(user.id)
-                bot.send_message(chat, f"{user.first_name} joined queue")
-            return
-
         if chat not in games:
+            bot.answer_callback_query(call.id)
             return
 
         game = games[chat]
 
-        if user.id != game["leader"]:
-            bot.answer_callback_query(call.id, "Only leader", show_alert=True)
+        # ---------------- JOIN QUEUE ----------------
+        if data == "join":
+            if user.id not in leader_queue[chat]:
+                leader_queue[chat].append(user.id)
+            bot.answer_callback_query(call.id, "Joined queue!")
             return
 
+        # Only leader controls game
+        if user.id != game["leader"]:
+            bot.answer_callback_query(call.id, "Only leader can use this!", show_alert=True)
+            return
+
+        # ---------------- SEE WORD ----------------
         if data == "see":
             bot.answer_callback_query(call.id, f"Word: {game['word']}", show_alert=True)
 
+        # ---------------- CHANGE WORD ----------------
         elif data == "change":
             game["word"] = random.choice(words)
-            bot.answer_callback_query(call.id, f"New word: {game['word']}", show_alert=True)
+            bot.answer_callback_query(call.id, f"New Word: {game['word']}", show_alert=True)
 
+        # ---------------- DROP LEAD ----------------
         elif data == "drop":
 
+            # delete old message
+            try:
+                bot.delete_message(chat, game["msg"])
+            except:
+                pass
+
+            # NEXT LEADER
             if leader_queue[chat]:
+
                 new = leader_queue[chat].pop(0)
                 member = bot.get_chat_member(chat, new)
 
-                new_word = random.choice(words)
+                game["leader"] = new
+                game["leader_name"] = member.user.first_name
+                game["word"] = random.choice(words)
 
                 mention = f"<a href='tg://user?id={new}'>{member.user.first_name}</a>"
 
                 msg = bot.send_message(
                     chat,
-                    f"🦈 Shark Game\n\n🎤 {mention} is now explaining!",
+                    f"🦈 Shark Game\n\n🎤 {mention} is now the leader!",
                     parse_mode="HTML",
                     reply_markup=game_keyboard()
                 )
 
-                games[chat] = {
-                    "leader": new,
-                    "leader_name": member.user.first_name,
-                    "word": new_word,
-                    "msg": msg.message_id
-                }
+                game["msg"] = msg.message_id
 
             else:
-                bot.send_message(chat, "No leader left")
-                del games[chat]
+                # 🔥 FIX: game end mat karo
+                bot.send_message(
+                    chat,
+                    "⚠️ No one in queue!\n👉 Same leader continues"
+                )
 
-    # GUESS ✅ FINAL FIX
+                game["word"] = random.choice(words)
+
+                msg = bot.send_message(
+                    chat,
+                    f"🦈 Shark Game\n\n🎤 {game['leader_name']} continues as leader!",
+                    reply_markup=game_keyboard()
+                )
+
+                game["msg"] = msg.message_id
+
+        bot.answer_callback_query(call.id)
+
+    # ---------------- GUESS ----------------
     @bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and not m.text.startswith("#"))
     def guess(message):
 
@@ -139,7 +169,7 @@ def register_shark_game(bot):
 
             bot.send_message(
                 chat,
-                f"🎉 {mention} guessed correctly!\n\n👑 Now you are the leader!",
+                f"🎉 {mention} guessed correctly!\n👑 Now you are the leader!",
                 parse_mode="HTML"
             )
 
@@ -152,7 +182,7 @@ def register_shark_game(bot):
 
             msg = bot.send_message(
                 chat,
-                f"🦈 Shark Game\n\n🎤 {mention} is now explaining!",
+                f"🦈 Shark Game\n\n🎤 {mention} is now leader!",
                 parse_mode="HTML",
                 reply_markup=game_keyboard()
             )
@@ -164,7 +194,7 @@ def register_shark_game(bot):
                 "msg": msg.message_id
             }
 
-    # RANK
+    # ---------------- RANK ----------------
     @bot.message_handler(commands=['ranking'])
     def rank(message):
 
@@ -183,7 +213,7 @@ def register_shark_game(bot):
 
         bot.send_message(chat, text)
 
-    # STOP
+    # ---------------- STOP ----------------
     @bot.message_handler(commands=['stop'])
     def stop(message):
 
@@ -192,4 +222,4 @@ def register_shark_game(bot):
         if chat in games:
             del games[chat]
 
-        bot.send_message(chat, "Game stopped")
+        bot.send_message(chat, "🛑 Game stopped")
