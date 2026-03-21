@@ -18,6 +18,7 @@ def load_words():
 words = load_words()
 
 
+# ---------------- KEYBOARD ----------------
 def game_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
@@ -25,17 +26,27 @@ def game_keyboard():
         InlineKeyboardButton("🔄 Change word", callback_data="change")
     )
     markup.row(
-        InlineKeyboardButton("🎮 Join Queue", callback_data="join"),
+        InlineKeyboardButton("🎮 I want to be a leader", callback_data="join"),
         InlineKeyboardButton("❌ Drop Lead", callback_data="drop")
     )
     return markup
 
 
+def join_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("🎮 I want to be a leader", callback_data="join")
+    )
+    return markup
+
+
+# ---------------- MAIN ----------------
 def register_shark_game(bot):
 
-    # ---------------- START GAME ----------------
+    # START GAME
     @bot.message_handler(commands=['game'])
     def start_game(message):
+
         chat = message.chat.id
 
         if chat in games:
@@ -77,14 +88,21 @@ def register_shark_game(bot):
 
         # ---------------- JOIN QUEUE ----------------
         if data == "join":
+
             if user.id not in leader_queue[chat]:
                 leader_queue[chat].append(user.id)
-            bot.answer_callback_query(call.id, "Joined queue!")
+
+            bot.answer_callback_query(call.id, "Added to leader queue!")
+
+            bot.send_message(
+                chat,
+                f"🎮 {user.first_name} added to leader queue"
+            )
             return
 
-        # Only leader controls game
+        # only leader controls
         if user.id != game["leader"]:
-            bot.answer_callback_query(call.id, "Only leader can use this!", show_alert=True)
+            bot.answer_callback_query(call.id, "Only leader can do this!", show_alert=True)
             return
 
         # ---------------- SEE WORD ----------------
@@ -96,16 +114,20 @@ def register_shark_game(bot):
             game["word"] = random.choice(words)
             bot.answer_callback_query(call.id, f"New Word: {game['word']}", show_alert=True)
 
-        # ---------------- DROP LEAD ----------------
+        # ---------------- DROP LEAD (NEW SYSTEM) ----------------
         elif data == "drop":
 
-            # delete old message
+            old_leader = game["leader_name"]
+
             try:
                 bot.delete_message(chat, game["msg"])
             except:
                 pass
 
-            # NEXT LEADER
+            # REMOVE CURRENT LEADER
+            game["leader"] = None
+
+            # NEXT LEADER FROM QUEUE
             if leader_queue[chat]:
 
                 new = leader_queue[chat].pop(0)
@@ -119,7 +141,7 @@ def register_shark_game(bot):
 
                 msg = bot.send_message(
                     chat,
-                    f"🦈 Shark Game\n\n🎤 {mention} is now the leader!",
+                    f"🦈 {old_leader} refused to lead ❌\n\n🎤 {mention} is now the leader!",
                     parse_mode="HTML",
                     reply_markup=game_keyboard()
                 )
@@ -127,21 +149,20 @@ def register_shark_game(bot):
                 game["msg"] = msg.message_id
 
             else:
-                # 🔥 FIX: game end mat karo
+
                 bot.send_message(
                     chat,
-                    "⚠️ No one in queue!\n👉 Same leader continues"
+                    f"🦈 {old_leader} refused to lead ❌\n\n⚠️ No leader in queue!"
                 )
 
-                game["word"] = random.choice(words)
-
-                msg = bot.send_message(
+                # SHOW JOIN BUTTON
+                bot.send_message(
                     chat,
-                    f"🦈 Shark Game\n\n🎤 {game['leader_name']} continues as leader!",
-                    reply_markup=game_keyboard()
+                    "👉 No leader available. Join queue to become leader!",
+                    reply_markup=join_keyboard()
                 )
 
-                game["msg"] = msg.message_id
+                del games[chat]
 
         bot.answer_callback_query(call.id)
 
@@ -169,7 +190,7 @@ def register_shark_game(bot):
 
             bot.send_message(
                 chat,
-                f"🎉 {mention} guessed correctly!\n👑 Now you are the leader!",
+                f"🎉 {mention} guessed correctly!\n👑 Now you are leader!",
                 parse_mode="HTML"
             )
 
@@ -182,7 +203,7 @@ def register_shark_game(bot):
 
             msg = bot.send_message(
                 chat,
-                f"🦈 Shark Game\n\n🎤 {mention} is now leader!",
+                f"🦈 New Leader Game\n\n🎤 {mention} is now leader!",
                 parse_mode="HTML",
                 reply_markup=game_keyboard()
             )
