@@ -7,16 +7,13 @@ import os
 from config import BOT_TOKEN, DELETE_TIME, EDIT_DELETE_TIME, API_URL, API_KEY
 from db import cursor, conn
 from game import register_game_handlers
-from shark_game import register_shark_game   # 👈 ye bhi add kar
+from shark_game import register_shark_game
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ✅ GAME REGISTER
+# ✅ GAME REGISTER (ONLY ONCE)
 register_game_handlers(bot)
 register_shark_game(bot)
-
-# 🔥 REGISTER GAME
-register_game_handlers(bot)
 
 # ------------------ DB FUNCTIONS ------------------
 
@@ -87,9 +84,9 @@ def help_cb(call):
 /removepack - Unban pack
 
 🎮 Game:
-/#start - Start quiz
-/#rank - Leaderboard
-/#end - Stop game
+#start - Start quiz
+#rank - Leaderboard
+#end - Stop game
 """
 
     bot.answer_callback_query(call.id)
@@ -121,9 +118,7 @@ def sticker_handler(message):
         user = message.from_user
         pack_name = sticker.set_name
 
-        BLOCKED_PACKS = load_packs()
-
-        if pack_name in BLOCKED_PACKS:
+        if pack_name in load_packs():
             bot.delete_message(message.chat.id, message.message_id)
 
             warn = bot.send_message(
@@ -135,12 +130,9 @@ def sticker_handler(message):
             return
 
         file_info = bot.get_file(sticker.file_id)
-        file_path = file_info.file_path
-        downloaded = bot.download_file(file_path)
+        downloaded = bot.download_file(file_info.file_path)
 
-        ext = file_path.split('.')[-1]
-        path = f"sticker.{ext}"
-
+        path = "sticker.tmp"
         with open(path, "wb") as f:
             f.write(downloaded)
 
@@ -159,9 +151,8 @@ def photo_handler(message):
     try:
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
-        file_path = file_info.file_path
 
-        downloaded = bot.download_file(file_path)
+        downloaded = bot.download_file(file_info.file_path)
 
         path = "photo.jpg"
         with open(path, "wb") as f:
@@ -200,54 +191,44 @@ def edited_msg(message):
 
 @bot.message_handler(commands=['addpack'])
 def add_pack(message):
-    try:
-        if not is_admin(message.chat.id, message.from_user.id):
-            bot.reply_to(message, "❌ You are not admin")
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ You are not admin")
+        return
+
+    if message.reply_to_message and message.reply_to_message.sticker:
+        pack = message.reply_to_message.sticker.set_name
+
+        if not pack:
+            bot.reply_to(message, "❌ Cannot detect pack name")
             return
 
-        if message.reply_to_message and message.reply_to_message.sticker:
-            pack = message.reply_to_message.sticker.set_name
-
-            if not pack:
-                bot.reply_to(message, "❌ Cannot detect pack name")
-                return
-
-            add_pack_db(pack)
-            bot.reply_to(message, f"✅ Added pack: {pack}")
-
-        else:
-            bot.reply_to(message, "❌ Reply to a sticker")
-
-    except Exception as e:
-        print(e)
+        add_pack_db(pack)
+        bot.reply_to(message, f"✅ Added pack: {pack}")
+    else:
+        bot.reply_to(message, "❌ Reply to a sticker")
 
 # ------------------ REMOVE PACK ------------------
 
 @bot.message_handler(commands=['removepack'])
 def remove_pack(message):
-    try:
-        if not is_admin(message.chat.id, message.from_user.id):
-            bot.reply_to(message, "❌ You are not admin")
+    if not is_admin(message.chat.id, message.from_user.id):
+        bot.reply_to(message, "❌ You are not admin")
+        return
+
+    if message.reply_to_message and message.reply_to_message.sticker:
+        pack = message.reply_to_message.sticker.set_name
+
+        if not pack:
+            bot.reply_to(message, "❌ Cannot detect pack name")
             return
 
-        if message.reply_to_message and message.reply_to_message.sticker:
-            pack = message.reply_to_message.sticker.set_name
-
-            if not pack:
-                bot.reply_to(message, "❌ Cannot detect pack name")
-                return
-
-            remove_pack_db(pack)
-            bot.reply_to(message, f"✅ Removed pack: {pack}")
-
-        else:
-            bot.reply_to(message, "❌ Reply to a sticker")
-
-    except Exception as e:
-        print(e)
+        remove_pack_db(pack)
+        bot.reply_to(message, f"✅ Removed pack: {pack}")
+    else:
+        bot.reply_to(message, "❌ Reply to a sticker")
 
 # ------------------ RUN ------------------
 
 def run_bot():
     print("Bot + Game running 🚀")
-    bot.infinity_polling(skip_pending=True)
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
